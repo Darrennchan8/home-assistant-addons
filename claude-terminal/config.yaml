@@ -1,8 +1,8 @@
 ---
-name: "Claude Terminal"
+name: "Claude Code"
 description: "Web terminal with Anthropic's Claude Code CLI and persistent auth"
 version: "2.6.2"
-slug: "claude_terminal"
+slug: "claude_code"
 init: false
 
 # Prebuilt images on GHCR — the Supervisor pulls these instead of building
@@ -22,7 +22,7 @@ url: "https://github.com/heytcass/home-assistant-addons"
 ingress: true
 ingress_port: 7681
 panel_icon: mdi:code-braces
-panel_title: "Claude Terminal"
+panel_title: "Claude Code"
 panel_admin: true
 
 # Port configuration

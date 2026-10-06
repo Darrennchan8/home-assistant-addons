@@ -1,0 +1,51 @@
+# Fork-only: merge heytcass/home-assistant-addons into main every day.
+#
+# Every upstream release bumps `version`, which sits right next to the
+# `slug` this fork renames, so a plain merge would conflict each time.
+# Merging with -X theirs settles those hunks in upstream's favour, after
+# which the fork's renames are reapplied. Non-conflicting fork changes
+# (the extra volume maps) merge normally; if upstream ever rewrites the
+# map block and they are lost, the job fails instead of pushing.
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # GITHUB_TOKEN cannot push commits that touch .github/workflows.
+          # Add a SYNC_TOKEN secret (PAT with contents + workflows write)
+          # for when upstream changes its workflows.
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      - name: Merge upstream
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/heytcass/home-assistant-addons.git
+          git fetch upstream main
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Already up to date"
+            exit 0
+          fi
+          git merge --no-edit -X theirs upstream/main
+
+          cfg=claude-terminal/config.yaml
+          sed -i 's/^name: .*/name: "Claude Code"/; s/^slug: .*/slug: "claude_code"/; s/^panel_title: .*/panel_title: "Claude Code"/' "$cfg"
+          for m in addons media backup ssl; do
+            yq -e ".map[] | select(.type == \"$m\")" "$cfg" > /dev/null \
+              || { echo "::error::$m mapping lost in merge; resolve by hand"; exit 1; }
+          done
+          git commit -q --amend --no-edit -a
+
+          git push origin HEAD:main

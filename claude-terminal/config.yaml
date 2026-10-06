@@ -4,33 +4,27 @@ description: "Web terminal with Anthropic's Claude Code CLI and persistent auth"
 version: "2.6.2"
 slug: "claude_code"
 init: false
-
 # Prebuilt images on GHCR — the Supervisor pulls these instead of building
 # locally (no build OOM, no image blobs in backups). Tag = version below.
 image: "ghcr.io/heytcass/{arch}-addon-claude-terminal"
-
 # Supported architectures (armv7 dropped in 2.5.0: HAOS dropped 32-bit ARM,
 # and neither Claude Code native builds nor managed Python exist for it)
 arch:
   - aarch64
   - amd64
-
 # External resources
 url: "https://github.com/heytcass/home-assistant-addons"
-
 # Web interface configuration
 ingress: true
 ingress_port: 7681
 panel_icon: mdi:code-braces
 panel_title: "Claude Code"
 panel_admin: true
-
 # Port configuration
 ports:
   7681/tcp: null
 ports_description:
   7681/tcp: "Direct web terminal access. Not needed for ingress, and NOT password-protected: anyone who can reach this port gets a root shell in the container, with no Home Assistant login. Leave unset unless the port is firewalled."
-
 # Add-on configuration options
 options:
   auto_launch_claude: true
@@ -60,26 +54,25 @@ schema:
     - str
   persistent_pip_packages:
     - str
-
-# Volume mappings for file access: the same set the Studio Code Server
-# add-on mounts, so anything you can edit there you can do here too
+# Volume mappings for file access
 map:
-  - type: homeassistant_config # Home Assistant configuration files
+  # Volume mappings this fork guarantees, matching Studio Code Server.
+  # Upstream entries of the same type are replaced; any others are kept.
+  - type: homeassistant_config
     read_only: false
     path: /config
-  - type: addons               # Local add-ons (/addons), for add-on development
+  - type: addons
     read_only: false
-  - type: all_addon_configs    # Other add-ons' config directories (/addon_configs)
+  - type: all_addon_configs
     read_only: false
-  - type: share                # Shared folder between add-ons and HA
+  - type: share
     read_only: false
-  - type: media                # Media folder (/media)
+  - type: media
     read_only: false
-  - type: backup               # Backup archives (/backup)
+  - type: backup
     read_only: false
-  - type: ssl                  # TLS certificates and keys (/ssl)
+  - type: ssl
     read_only: false
-
 # API access for Home Assistant integration
 # hassio_api + role manager: /addons (HA Smart Context lists installed
 #   add-ons) needs manager; /core/info and /host/info need only default
@@ -90,9 +83,7 @@ map:
 hassio_api: true
 hassio_role: manager
 homeassistant_api: true
-
 # Service startup configuration
 startup: services
-
 # Web UI access URL
 webui: http://[HOST]:[PORT:7681]/

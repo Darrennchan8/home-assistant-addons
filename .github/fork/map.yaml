@@ -1,0 +1,17 @@
+# Volume mappings this fork guarantees, matching Studio Code Server.
+# Upstream entries of the same type are replaced; any others are kept.
+- type: homeassistant_config
+  read_only: false
+  path: /config
+- type: addons
+  read_only: false
+- type: all_addon_configs
+  read_only: false
+- type: share
+  read_only: false
+- type: media
+  read_only: false
+- type: backup
+  read_only: false
+- type: ssl
+  read_only: false

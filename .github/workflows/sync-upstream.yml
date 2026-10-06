@@ -1,51 +1,68 @@
-# Fork-only: merge heytcass/home-assistant-addons into main every day.
+# Fork-only: rebuild main from heytcass/home-assistant-addons every day.
 #
-# Every upstream release bumps `version`, which sits right next to the
-# `slug` this fork renames, so a plain merge would conflict each time.
-# Merging with -X theirs settles those hunks in upstream's favour, after
-# which the fork's renames are reapplied. Non-conflicting fork changes
-# (the extra volume maps) merge normally; if upstream ever rewrites the
-# map block and they are lost, the job fails instead of pushing.
+# Each run takes upstream's files (everything outside .github/), applies
+# .github/fork/apply.sh on top, and commits the result if it differs. No
+# upstream history is merged, so there are no merge conflicts, and
+# upstream's workflow files never land here (pushing those would need a
+# PAT with the workflows permission). A run that fails verification
+# pushes nothing, leaving the last good main in place.
 name: Sync upstream
 
 on:
   schedule:
     - cron: "17 6 * * *"
+  push:
+    branches: [main]
+    paths: [".github/fork/**", ".github/workflows/sync-upstream.yml"]
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: write
+
+concurrency:
+  group: sync-upstream
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          # GITHUB_TOKEN cannot push commits that touch .github/workflows.
-          # Add a SYNC_TOKEN secret (PAT with contents + workflows write)
-          # for when upstream changes its workflows.
-          token: ${{ secrets.SYNC_TOKEN || github.token }}
 
-      - name: Merge upstream
+      - name: Take upstream's files
+        id: upstream
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote add upstream https://github.com/heytcass/home-assistant-addons.git
-          git fetch upstream main
-          if git merge-base --is-ancestor upstream/main HEAD; then
-            echo "Already up to date"
+          git fetch --no-tags https://github.com/heytcass/home-assistant-addons.git main
+          echo "sha=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_OUTPUT"
+          git ls-files -z -- . ':!:.github' | xargs -0 -r git rm -q --
+          git checkout FETCH_HEAD -- . ':!:.github'
+
+      - name: Apply fork overlay
+        run: .github/fork/apply.sh && .github/fork/verify.sh
+
+      - name: Commit and push
+        env:
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "main already matches upstream ${UPSTREAM_SHA::7} + overlay"
             exit 0
           fi
-          git merge --no-edit -X theirs upstream/main
-
-          cfg=claude-terminal/config.yaml
-          sed -i 's/^name: .*/name: "Claude Code"/; s/^slug: .*/slug: "claude_code"/; s/^panel_title: .*/panel_title: "Claude Code"/' "$cfg"
-          for m in addons media backup ssl; do
-            yq -e ".map[] | select(.type == \"$m\")" "$cfg" > /dev/null \
-              || { echo "::error::$m mapping lost in merge; resolve by hand"; exit 1; }
-          done
-          git commit -q --amend --no-edit -a
-
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "Sync upstream heytcass/home-assistant-addons@${UPSTREAM_SHA::7}" \
+            -m "Upstream-Commit: $UPSTREAM_SHA"
+          git show --stat --format='%s' HEAD
           git push origin HEAD:main
+
+      # GitHub disables scheduled workflows in repos with no activity for
+      # 60 days, which would happen whenever upstream goes quiet. Re-enabling
+      # it through the API is reported to reset that timer (the approach
+      # gautamkrishnar/keepalive-workflow uses); if it stops working, the
+      # schedule shows as disabled in the Actions tab and one click fixes it.
+      - name: Keep the schedule alive
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/sync-upstream.yml/enable"
